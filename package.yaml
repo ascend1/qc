@@ -38,8 +38,8 @@ executables:
     - qc
 
 tests:
-  qc-test:
-    main:                Spec.hs
+  utests_parser:
+    main:                TestParser.hs
     source-dirs:         test
     ghc-options:
     - -threaded
@@ -47,3 +47,4 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - qc
+    - HUnit
