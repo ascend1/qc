@@ -1,6 +1,9 @@
+{-# LANGUAGE TupleSections #-}
+
 module Parser
-    ( Parser, AST (..), ValueExpr (..),
-      parse
+    ( Parser, reservedKeywords,
+      ValueExpr (..), QueryExpr (..), TableExpr (..),
+      parseVE, parseQE
     ) where
 
 import qualified Text.Parsec as P
@@ -11,27 +14,7 @@ import Control.Applicative
 
 type Parser a = P.Parsec String () a
 
-data AST = ValueExpr
-         deriving (Eq, Show)
-
-data ValueExpr = ExactNumericLiteral Integer
-               | StringLiteral String
-               | IdentifierChain String String  -- a.b
-               | Identifier String
-               | Asterisk                       -- *
-               | QualifiedAsterisk String       -- t.*
-               | UdfExpr String [ValueExpr]
-               | UnaryOp String ValueExpr
-               | BinaryOp String ValueExpr ValueExpr
-               | Case (Maybe ValueExpr)         -- case
-                      [(ValueExpr, ValueExpr)]  -- when .. then ..
-                      (Maybe ValueExpr)         -- else
-               deriving (Eq, Show)
-
-parse :: String -> Either P.ParseError ValueExpr
-parse = P.parse (valueExpr <* P.eof) ""
-    
--- tokens
+-- Token Parsers --
 
 lexeme :: Parser a -> Parser a
 lexeme p = p <* PC.spaces
@@ -68,6 +51,33 @@ comma = lexeme $ PC.char ','
 commaSep :: Parser a -> Parser [a]
 commaSep = (`P.sepBy` comma)
 
+commaSep1 :: Parser a -> Parser [a]
+commaSep1 = (`P.sepBy1` comma)
+
+-- Reserved Keywords --
+
+reservedKeywords = ["case", "when", "then", "else", "end",
+                    "select", "from", "where"]
+
+-- Value Expression --
+
+data ValueExpr = ExactNumericLiteral Integer
+               | StringLiteral String
+               | IdentifierChain String String  -- a.b
+               | Identifier String
+               | Asterisk                       -- *
+               | QualifiedAsterisk String       -- t.*
+               | UdfExpr String [ValueExpr]
+               | UnaryOp String ValueExpr
+               | BinaryOp String ValueExpr ValueExpr
+               | Case (Maybe ValueExpr)         -- case
+                      [(ValueExpr, ValueExpr)]  -- when .. then ..
+                      (Maybe ValueExpr)         -- else
+               deriving (Eq, Show)
+
+parseVE :: String -> Either P.ParseError ValueExpr
+parseVE = P.parse (valueExpr <* P.eof) ""
+
 -- helper functions
 
 blackListValueExpr :: [String] -> Parser ValueExpr -> Parser ValueExpr
@@ -77,7 +87,7 @@ blackListValueExpr blacklist p = P.try $ do
                       _ -> True
     return v
 
--- parsers
+-- value expression parsers
 
 numLit :: Parser ValueExpr
 numLit = ExactNumericLiteral <$> integer
@@ -102,26 +112,25 @@ udf p = UdfExpr <$> identifier <*> parens (commaSep p)
 
 caseExpr :: Parser ValueExpr -> Parser ValueExpr
 caseExpr p = Case <$>
-    (keyword "case" *> P.optionMaybe caseValueExpr) <*>
+    (keyword "case" *> P.optionMaybe p) <*>
     (P.many1 whenClause) <*>
     (P.optionMaybe elseClause <* keyword "end")
   where
-    whenClause = (,) <$> (keyword "when" *> caseValueExpr)
-                     <*> (keyword "then" *> caseValueExpr)
-    elseClause = keyword "else" *> caseValueExpr
-    caseValueExpr = blackListValueExpr blacklist p
-    blacklist = ["case", "when", "then", "else", "end"]    
+    whenClause = (,) <$> (keyword "when" *> p)
+                     <*> (keyword "then" *> p)
+    elseClause = keyword "else" *> p
 
-term :: Parser ValueExpr
-term = P.choice [
+term :: [String] -> Parser ValueExpr
+term reservedKeywords = P.choice [
     caseExpr valueExpr,
     P.try (udf valueExpr),
     P.try qualifiedAsterisk,
     P.try idenChain,
-    iden, stringLit, numLit,
+    blackListValueExpr reservedKeywords iden,
+    stringLit, numLit,
     parens valueExpr,
     asterisk
-  ] 
+  ]
 
 table = [[prefix "-", prefix "+"]
         ,[binary "^" PE.AssocLeft]
@@ -149,4 +158,75 @@ table = [[prefix "-", prefix "+"]
     prefixK name       = PE.Prefix (UnaryOp name <$ keyword name)
 
 valueExpr :: Parser ValueExpr
-valueExpr = PE.buildExpressionParser table term
+valueExpr = PE.buildExpressionParser table (term reservedKeywords)
+
+-- Query Expression --
+
+data QueryExpr = Select {
+    qeSelectList :: [(ValueExpr, Maybe String)], -- (field, [alias])
+    qeFrom       :: [TableExpr],
+    qeWhere      :: Maybe ValueExpr,
+    qeGroupBy    :: [ValueExpr],
+    qeHaving     :: Maybe ValueExpr,
+    qeOrderBy    :: [ValueExpr]
+} deriving (Eq, Show)
+
+data TableExpr = TablePrimary String
+               | DerivedTable QueryExpr String  -- must have an alias
+               deriving (Eq, Show)
+
+parseQE :: String -> Either P.ParseError QueryExpr
+parseQE = P.parse (queryExpr <* P.eof) ""
+
+-- helper functions
+
+blackListIdentifier :: [String] -> Parser String
+blackListIdentifier reservedKeywords = do
+    i <- identifier
+    guard (i `notElem` reservedKeywords)
+    return i
+
+-- query expression parsers
+
+selectItem :: Parser (ValueExpr, Maybe String)
+selectItem = (,) <$> valueExpr <*> P.optionMaybe (P.try alias)
+    where alias = P.optional (keyword "as") *> blackListIdentifier reservedKeywords
+
+selectList :: Parser [(ValueExpr, Maybe String)]
+selectList = keyword "select" *> commaSep1 selectItem
+
+tablePrimary :: Parser TableExpr
+tablePrimary = TablePrimary <$> identifier
+
+derivedTable :: Parser TableExpr
+derivedTable = DerivedTable <$> parens queryExpr <*> (P.optional (keyword "as") *> identifier)
+
+tableExpr :: Parser TableExpr
+tableExpr = P.choice [
+    P.try derivedTable,
+    tablePrimary
+  ]
+
+fromExpr :: Parser [TableExpr]
+fromExpr = keyword "from" *> commaSep1 tableExpr
+
+whereClause :: Parser (Maybe ValueExpr)
+whereClause = P.optionMaybe (keyword "where" *> valueExpr)
+
+groupBy :: Parser [ValueExpr]
+groupBy = keyword "group" *> keyword "by" *> commaSep1 valueExpr
+
+having :: Parser (Maybe ValueExpr)
+having = P.optionMaybe (keyword "having" *> valueExpr)
+
+orderBy :: Parser [ValueExpr]
+orderBy = keyword "order" *> keyword "by" *> commaSep1 valueExpr
+
+queryExpr :: Parser QueryExpr
+queryExpr = Select
+    <$> selectList
+    <*> P.option [TablePrimary "dummy"] fromExpr
+    <*> whereClause
+    <*> P.option [] groupBy
+    <*> having
+    <*> P.option [] orderBy
