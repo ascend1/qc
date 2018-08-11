@@ -122,11 +122,45 @@ selectListTests =
     ] ++ multipleSelectItemsTests
       ++ singleSelectItemTests
 
-fromTests :: [(String, QueryExpr)]
-fromTests =
+fromTablePrimaryTests :: [(String, QueryExpr)]
+fromTablePrimaryTests =
     [("select a from t"
      ,makeSelect {qeSelectList = [(Identifier "a", Nothing)]
                  ,qeFrom = [TablePrimary "t"]})]
+
+fromDerivedTableTests :: [(String, QueryExpr)]
+fromDerivedTableTests =
+    [("select a from (select a from t) as u"
+     ,makeSelect {qeSelectList = [(Identifier "a", Nothing)]
+                 ,qeFrom = [DerivedTable makeSelect {qeSelectList = [(Identifier "a", Nothing)]
+                                                    ,qeFrom = [TablePrimary "t"]}
+                                         "u"]})]
+
+simpleBinaryJoinTests :: [(String, QueryExpr)]
+simpleBinaryJoinTests =
+    [("select x from a join b"
+     ,makeSelect {qeSelectList = [(Identifier "x", Nothing)]
+                 ,qeFrom = [TEJoin InnerJoin (TablePrimary "a") (TablePrimary "b") Nothing]})
+
+    ,("select x from a semi join b"
+     ,makeSelect {qeSelectList = [(Identifier "x", Nothing)]
+                 ,qeFrom = [TEJoin SemiJoin (TablePrimary "a") (TablePrimary "b") Nothing]})
+
+    ,("select a.x, b.z from a join b on a.x = b.y"
+     ,makeSelect {qeSelectList = [(IdentifierChain "a" "x", Nothing)
+                                 ,(IdentifierChain "b" "z", Nothing)]
+                 ,qeFrom = [TEJoin InnerJoin (TablePrimary "a") (TablePrimary "b") (Just $ BinaryOp "=" (IdentifierChain "a" "x") (IdentifierChain "b" "y"))]})
+
+    ,("select * from a anti join b where a.y > 10"
+     ,makeSelect {qeSelectList = [(Asterisk, Nothing)]
+                 ,qeFrom = [TEJoin AntiJoin (TablePrimary "a") (TablePrimary "b") Nothing]
+                 ,qeWhere = Just $ BinaryOp ">" (IdentifierChain "a" "y") (ExactNumericLiteral 10)})
+
+    ,("select a.y from a cross join b group by a.y"
+     ,makeSelect {qeSelectList = [(IdentifierChain "a" "y", Nothing)]
+                 ,qeFrom = [TEJoin CrossJoin (TablePrimary "a") (TablePrimary "b") Nothing]
+                 ,qeGroupBy = [(IdentifierChain "a" "y")]})
+    ]
 
 whereTests :: [(String, QueryExpr)]
 whereTests =
@@ -177,7 +211,8 @@ orderByTests =
                       ,qeOrderBy = o}
 
 qeTests :: [(String, QueryExpr)]
-qeTests = selectListTests ++ fromTests ++ whereTests ++ groupByTests ++ havingTests ++ orderByTests
+qeTests = selectListTests ++ fromTablePrimaryTests ++ fromDerivedTableTests ++ simpleBinaryJoinTests ++
+          whereTests ++ groupByTests ++ havingTests ++ orderByTests
 
 -- all tests
 

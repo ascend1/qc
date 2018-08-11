@@ -1,8 +1,6 @@
-{-# LANGUAGE TupleSections #-}
-
 module Parser
     ( Parser, reservedKeywords,
-      ValueExpr (..), QueryExpr (..), TableExpr (..),
+      ValueExpr (..), QueryExpr (..), TableExpr (..), JoinType (..),
       parseVE, parseQE
     ) where
 
@@ -57,7 +55,8 @@ commaSep1 = (`P.sepBy1` comma)
 -- Reserved Keywords --
 
 reservedKeywords = ["case", "when", "then", "else", "end",
-                    "select", "from", "where"]
+                    "select", "from", "where", "group", "having", "order",
+                    "join", "inner", "left", "full", "outer", "semi", "anti", "on"]
 
 -- Value Expression --
 
@@ -172,8 +171,12 @@ data QueryExpr = Select {
 } deriving (Eq, Show)
 
 data TableExpr = TablePrimary String
-               | DerivedTable QueryExpr String  -- must have an alias
+               | DerivedTable QueryExpr String       -- must have an alias
+               | TEJoin JoinType TableExpr TableExpr (Maybe ValueExpr)
                deriving (Eq, Show)
+
+data JoinType = InnerJoin | SemiJoin | AntiJoin | LeftJoin | FullJoin | CrossJoin
+              deriving (Eq, Show)
 
 parseQE :: String -> Either P.ParseError QueryExpr
 parseQE = P.parse (queryExpr <* P.eof) ""
@@ -196,16 +199,49 @@ selectList :: Parser [(ValueExpr, Maybe String)]
 selectList = keyword "select" *> commaSep1 selectItem
 
 tablePrimary :: Parser TableExpr
-tablePrimary = TablePrimary <$> identifier
+tablePrimary = TablePrimary <$> blackListIdentifier reservedKeywords
 
 derivedTable :: Parser TableExpr
-derivedTable = DerivedTable <$> parens queryExpr <*> (P.optional (keyword "as") *> identifier)
+derivedTable = DerivedTable <$> parens queryExpr <*> (P.optional (keyword "as") *> blackListIdentifier reservedKeywords)
+
+joinType :: Parser JoinType
+joinType = P.choice [
+    P.try (InnerJoin <$ P.optional (keyword "inner") <* keyword "join"),
+    P.choice [
+        CrossJoin <$ P.try (keyword "cross"),
+        SemiJoin <$ P.try (keyword "semi"),
+        AntiJoin <$ P.try (keyword "anti"),
+        P.choice [
+            LeftJoin <$ P.try (keyword "left"),
+            FullJoin <$ P.try (keyword "full")
+        ]
+        <* P.optional (P.try $ keyword "outer")
+    ]
+    <* keyword "join"
+  ]
+
+joinCondition :: Parser (Maybe ValueExpr)
+joinCondition = P.optionMaybe (keyword "on" *> valueExpr)
+
+teJoin :: Parser TableExpr
+teJoin = nonJoinTable >>= remainingJoins
+  where
+    nonJoinTable = P.choice [
+        P.try derivedTable,
+        tablePrimary
+        ]
+    remainingJoins lt = (do
+        jtype <- joinType
+        rt <- nonJoinTable
+        TEJoin jtype lt rt <$> joinCondition)
+--        >>= remainingJoins   -- left associative, ok for parsing
 
 tableExpr :: Parser TableExpr
 tableExpr = P.choice [
     P.try derivedTable,
+    P.try teJoin,
     tablePrimary
-  ]
+    ]
 
 fromExpr :: Parser [TableExpr]
 fromExpr = keyword "from" *> commaSep1 tableExpr
