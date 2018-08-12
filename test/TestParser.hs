@@ -162,6 +162,13 @@ simpleBinaryJoinTests =
                  ,qeGroupBy = [(IdentifierChain "a" "y")]})
     ]
 
+multipleJoinTests :: [(String, QueryExpr)]
+multipleJoinTests =
+    [("select x from a join b semi join c"
+     ,makeSelect {qeSelectList = [(Identifier "x", Nothing)]
+                 ,qeFrom = [TEJoin SemiJoin (TEJoin InnerJoin (TablePrimary "a") (TablePrimary "b") Nothing) (TablePrimary "c") Nothing]})
+    ]
+
 whereTests :: [(String, QueryExpr)]
 whereTests =
     [("select a from t where a = 5"
@@ -211,7 +218,7 @@ orderByTests =
                       ,qeOrderBy = o}
 
 qeTests :: [(String, QueryExpr)]
-qeTests = selectListTests ++ fromTablePrimaryTests ++ fromDerivedTableTests ++ simpleBinaryJoinTests ++
+qeTests = selectListTests ++ fromTablePrimaryTests ++ fromDerivedTableTests ++ simpleBinaryJoinTests ++ multipleJoinTests ++
           whereTests ++ groupByTests ++ havingTests ++ orderByTests
 
 -- all tests

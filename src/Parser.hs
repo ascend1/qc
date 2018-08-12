@@ -189,6 +189,9 @@ blackListIdentifier reservedKeywords = do
     guard (i `notElem` reservedKeywords)
     return i
 
+suffixWrapper :: (a -> Parser a) -> a -> Parser a
+suffixWrapper f p = f p <|> return p
+
 -- query expression parsers
 
 selectItem :: Parser (ValueExpr, Maybe String)
@@ -223,8 +226,8 @@ joinType = P.choice [
 joinCondition :: Parser (Maybe ValueExpr)
 joinCondition = P.optionMaybe (keyword "on" *> valueExpr)
 
-teJoin :: Parser TableExpr
-teJoin = nonJoinTable >>= remainingJoins
+tableExpr :: Parser TableExpr
+tableExpr = nonJoinTable >>= suffixWrapper remainingJoins
   where
     nonJoinTable = P.choice [
         P.try derivedTable,
@@ -234,14 +237,7 @@ teJoin = nonJoinTable >>= remainingJoins
         jtype <- joinType
         rt <- nonJoinTable
         TEJoin jtype lt rt <$> joinCondition)
---        >>= remainingJoins   -- left associative, ok for parsing
-
-tableExpr :: Parser TableExpr
-tableExpr = P.choice [
-    P.try derivedTable,
-    P.try teJoin,
-    tablePrimary
-    ]
+        >>= suffixWrapper remainingJoins   -- left associative, ok for parsing
 
 fromExpr :: Parser [TableExpr]
 fromExpr = keyword "from" *> commaSep1 tableExpr
