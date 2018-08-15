@@ -92,7 +92,7 @@ numLit :: Parser ValueExpr
 numLit = ExactNumericLiteral <$> integer
 
 stringLit :: Parser ValueExpr
-stringLit = StringLiteral <$> (lexeme (PC.char '\'' *> P.manyTill PC.anyChar (PC.char '\'')))
+stringLit = StringLiteral <$> lexeme (PC.char '\'' *> P.manyTill PC.anyChar (PC.char '\''))
 
 iden :: Parser ValueExpr
 iden = Identifier <$> identifier
@@ -112,7 +112,7 @@ udf p = UdfExpr <$> identifier <*> parens (commaSep p)
 caseExpr :: Parser ValueExpr -> Parser ValueExpr
 caseExpr p = Case <$>
     (keyword "case" *> P.optionMaybe p) <*>
-    (P.many1 whenClause) <*>
+    P.many1 whenClause <*>
     (P.optionMaybe elseClause <* keyword "end")
   where
     whenClause = (,) <$> (keyword "when" *> p)

@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 62c61f0b5421ae6caadc0bcc2583bf48c8eac54f2be04a8bc21483160f9be69d
+-- hash: ed926541289821b25a761dc32d936540c7c88c43986626c691498030815f5275
 
 name:           qc
 version:        0.1.0.0
@@ -27,6 +27,7 @@ source-repository head
 library
   exposed-modules:
       Parser
+      SemanticAnalyzer
   other-modules:
       Paths_qc
   hs-source-dirs:
