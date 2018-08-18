@@ -2,8 +2,8 @@ module SqlType
     ( SqlType (..)
     ) where
 
-data SqlType = StInteger
-             | StBigInt
+data SqlType = StBoolean
+             | StInteger
              | StChar Int
              | StVarchar Int
              | StUnknown

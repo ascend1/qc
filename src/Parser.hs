@@ -56,7 +56,8 @@ commaSep1 = (`P.sepBy1` comma)
 
 reservedKeywords = ["case", "when", "then", "else", "end",
                     "select", "from", "where", "group", "having", "order",
-                    "join", "inner", "left", "full", "outer", "semi", "anti", "on"]
+                    "join", "inner", "left", "full", "outer", "semi", "anti", "on",
+                    "true", "false", "null"]
 
 -- Value Expression --
 

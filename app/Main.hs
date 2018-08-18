@@ -4,7 +4,7 @@ import Parser
 import SemanticAnalyzer
 import qualified Text.Parsec as P
 
-saChecker :: String -> Either P.ParseError QueryExpr'
+saChecker :: String -> Either P.ParseError TQueryExpr
 saChecker s =
     case parseQE s of
         Left x -> Left x

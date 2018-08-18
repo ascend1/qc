@@ -7,6 +7,8 @@ import SqlType
 import qualified Data.Map as M
 
 data ObjectType = Table | Column
+                | ConstVal | ConstNull
+                | Func
                 deriving (Eq, Show)
 
 data Metadata = Meta {
