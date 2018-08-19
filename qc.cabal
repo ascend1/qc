@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: cd2f73804e373c48dfd37f0fbaccb2663662547cf97f0351ffabc3869951ec74
+-- hash: 06bd185de30ef2869ba0753c8ec91ea8159261124ee09238a70ec80f6b52b554
 
 name:           qc
 version:        0.1.0.0
@@ -54,10 +54,13 @@ executable qc-exe
     , qc
   default-language: Haskell2010
 
-test-suite utests_parser
+test-suite unittests
   type: exitcode-stdio-1.0
-  main-is: TestParser.hs
+  main-is: TestMain.hs
   other-modules:
+      TestBase
+      TestParser
+      TestSemanticAnalyzer
       Paths_qc
   hs-source-dirs:
       test

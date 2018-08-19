@@ -123,6 +123,7 @@ analyzeValueExpr (Identifier a) sTable =
 analyzeValueExpr Asterisk sTable =
     (TAsterisk, M.elems sTable)
 
+-- todo: implement undefined analyzers
 analyzeValueExpr (QualifiedAsterisk a) sTable = undefined
 analyzeValueExpr (UdfExpr name args) sTable = undefined
 
@@ -133,6 +134,8 @@ analyzeValueExpr (UnaryOp name arg) sTable =
                 [] -> error ("failed in analyzing argument of function " ++ name ++ ": " ++ show arg)
                 [x] -> (TUnaryOp name argNode, [analyzeUnaryOp name x])
                 (x:xs) -> error ("ambiguous argument of function " ++ name ++ ": " ++ show arg)
+
+analyzeValueExpr (BinaryOp name arg1 arg2) sTable = undefined
 
 analyzeTableExpr :: (TableExpr, SymbolTable) -> (TTableExpr, SymbolTable)
 analyzeTableExpr (TablePrimary t, sTable) =
@@ -145,6 +148,13 @@ analyzeTableExpr (TablePrimary t, sTable) =
 
 analyzeTableExpr (DerivedTable qe s, sTable) = undefined
 
+-- todo:
+-- 1. update select position
+-- 2. check: no aggr func in where clause
+-- 3. in case of group by exists, check:
+--    a) select fields      = subset of group exprs + aggr funcs
+--    b) fields in having   = subset of group exprs + aggr funcs
+--    c) fields in order by = subset of group exprs + aggr funcs
 analyze :: QueryExpr -> TQueryExpr
 analyze qe = (Select' slist' from'
                       (analyzeMaybeValueExpr (qeWhere qe) sTable)
