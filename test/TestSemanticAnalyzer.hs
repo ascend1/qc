@@ -39,12 +39,39 @@ simpleSelectTests =
                      ,qeOrderBy' = []}
             ,[Symbol {sName = "r_regionkey", sSqlType = StInteger, sObjectType = Column, sSelectPos = -1, sRelId = -1, sId = 2
                      ,sParent = Just (Symbol {sName = "region", sSqlType = StUnknown, sObjectType = Table, sSelectPos = -1, sRelId = -1, sId = 1, sParent = Nothing})}]))
-    ,("select n_nationkey from region"
-     ,Left "unresolved reference: n_nationkey")
+--    ,("select n_nationkey from region"
+--     ,Left "unresolved reference: n_nationkey")
+    ]
+
+groupByTests :: [(String, TestSAResult)]
+groupByTests =
+    [("select sum(r_regionkey), r_name from region group by r_name"
+     ,Right (Select' {qeSelectList' = [((TUdfExpr "sum" [(TIdentifier "r_regionkey"
+                                                         ,[Symbol {sName = "r_regionkey", sSqlType = StInteger, sObjectType = Column, sSelectPos = -1, sRelId = -1, sId = 2
+                                                                  ,sParent = Just (Symbol {sName = "region", sSqlType = StUnknown, sObjectType = Table, sSelectPos = -1, sRelId = -1, sId = 1, sParent = Nothing})}])]
+                                        ,[Symbol {sName = "sum", sSqlType = StInteger, sObjectType = Func, sSelectPos = -1, sRelId = -1, sId = -1, sParent = Nothing}])
+                                       ,Nothing)
+                                      ,((TIdentifier "r_name"
+                                        ,[Symbol {sName = "r_name", sSqlType = StChar 25, sObjectType = Column, sSelectPos = -1, sRelId = -1, sId = 3
+                                                 ,sParent = Just (Symbol {sName = "region", sSqlType = StUnknown, sObjectType = Table, sSelectPos = -1, sRelId = -1, sId = 1, sParent = Nothing})}])
+                                       ,Nothing)]
+                     ,qeFrom' = [(TTablePrimary "region"
+                                 ,[Symbol {sName = "region", sSqlType = StUnknown, sObjectType = Table, sSelectPos = -1, sRelId = -1, sId = 1, sParent = Nothing}])]
+                     ,qeWhere' = Nothing
+                     ,qeGroupBy' = [(TIdentifier "r_name"
+                                    ,[Symbol {sName = "r_name", sSqlType = StChar 25, sObjectType = Column, sSelectPos = -1, sRelId = -1, sId = 3
+                                             ,sParent = Just (Symbol {sName = "region", sSqlType = StUnknown, sObjectType = Table, sSelectPos = -1, sRelId = -1, sId = 1, sParent = Nothing})}])]
+                     ,qeHaving' = Nothing
+                     ,qeOrderBy' = []}
+            ,[Symbol {sName = "sum", sSqlType = StInteger, sObjectType = Func, sSelectPos = -1, sRelId = -1, sId = -1, sParent = Nothing}
+             ,Symbol {sName = "r_name", sSqlType = StChar 25, sObjectType = Column, sSelectPos = -1, sRelId = -1, sId = 3
+                     ,sParent = Just (Symbol {sName = "region", sSqlType = StUnknown, sObjectType = Table, sSelectPos = -1, sRelId = -1, sId = 1, sParent = Nothing})}]))
+--    ,("select sum(r_regionkey), r_comment from region group by r_name"
+--     ,Left "unresolved reference: n_comment")
     ]
 
 saTests :: [(String, TestSAResult)]
-saTests = simpleSelectTests
+saTests = simpleSelectTests ++ groupByTests
 
 -- run tests
 

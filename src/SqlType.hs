@@ -4,6 +4,7 @@ module SqlType
 
 data SqlType = StBoolean
              | StInteger
+             | StDouble
              | StChar Int
              | StVarchar Int
              | StUnknown

@@ -41,7 +41,7 @@ data TValueExpr' = TExactNumericLiteral Integer
                          [(TValueExpr, TValueExpr)]  -- when .. then ..
                          (Maybe TValueExpr)          -- else
                  deriving (Eq, Show)
- 
+
 type TTableExpr = (TTableExpr', [SemanticInfo])
 data TTableExpr' = TTablePrimary String
                  | TDerivedTable TQueryExpr String   -- must have an alias
@@ -63,15 +63,15 @@ data TQueryExpr' = Select' {
 makeSymbol :: String -> Metadata -> Maybe SemanticInfo -> SemanticInfo
 makeSymbol s m p = Symbol s (sqlType m) (objType m) (-1) (-1) (mId m) p
 
-analyzeMaybeValueExpr :: Maybe ValueExpr -> SymbolTable -> Maybe TValueExpr
+analyzeMaybeValueExpr :: Maybe ValueExpr -> [SymbolTable] -> Maybe TValueExpr
 analyzeMaybeValueExpr mve st =
     case mve of
         Just x -> Just $ analyzeValueExpr x st
         Nothing -> Nothing
 
-analyzeListValueExpr :: [ValueExpr] -> SymbolTable -> [TValueExpr]
+analyzeListValueExpr :: [ValueExpr] -> [SymbolTable] -> [TValueExpr]
 analyzeListValueExpr lve st =
-    map (\ve -> analyzeValueExpr ve st) lve
+    map (`analyzeValueExpr` st) lve
 
 -- analyze
 
@@ -94,7 +94,27 @@ analyzeUnaryOp n s =
         argObjType = sObjectType s
         argSqlType = sSqlType s
 
-analyzeValueExpr :: ValueExpr -> SymbolTable -> TValueExpr
+analyzeFunc :: String -> [[SemanticInfo]] -> SemanticInfo
+analyzeFunc n [x] =
+    case x of
+        [] -> undefined
+        [s] -> let argSqlType = sSqlType s in
+            case n of
+                "sum" ->
+                    if argSqlType /= StInteger && argSqlType /= StDouble
+                        then error ("invalid argument type for function sum: " ++ show argSqlType)
+                    else Symbol n argSqlType Func (-1) (-1) (-1) Nothing
+                "avg" ->
+                    if argSqlType /= StInteger && argSqlType /= StDouble
+                        then error ("invalid argument type for function sum: " ++ show argSqlType)
+                    else Symbol n StDouble Func (-1) (-1) (-1) Nothing
+                "count" ->
+                    Symbol n StInteger Func (-1) (-1) (-1) Nothing
+        (y:ys) -> undefined
+
+analyzeFunc n (x:xs) = undefined
+
+analyzeValueExpr :: ValueExpr -> [SymbolTable] -> TValueExpr
 analyzeValueExpr (ExactNumericLiteral a) _ =
     (TExactNumericLiteral a
     ,[Symbol "" StInteger ConstVal (-1) (-1) (-1) Nothing])
@@ -104,7 +124,7 @@ analyzeValueExpr (StringLiteral a) _ =
     ,[Symbol "" (StChar $ length a) ConstVal (-1) (-1) (-1) Nothing])
 
 analyzeValueExpr (IdentifierChain a b) sTable =
-    let symbol = M.lookup b sTable in
+    let symbol = M.lookup b (head sTable) in
         case symbol of
             Just x -> let parent = sParent x in
                 case parent of
@@ -115,17 +135,26 @@ analyzeValueExpr (IdentifierChain a b) sTable =
             Nothing -> error ("unresolved reference: " ++ a ++ "." ++ b)
 
 analyzeValueExpr (Identifier a) sTable =
-    let symbol = M.lookup a sTable in
+    let symbol = M.lookup a (head sTable) in
         case symbol of
             Just x -> (TIdentifier a, [x])
             Nothing -> error ("unresolved reference: " ++ a)
 
+-- todo: count(*) ?
 analyzeValueExpr Asterisk sTable =
-    (TAsterisk, M.elems sTable)
+    (TAsterisk, M.elems (head sTable))
 
 -- todo: implement undefined analyzers
 analyzeValueExpr (QualifiedAsterisk a) sTable = undefined
-analyzeValueExpr (UdfExpr name args) sTable = undefined
+
+analyzeValueExpr (UdfExpr name args) sTable =
+    let argNode = analyzeListValueExpr args sTbl
+        argInfo = map snd argNode in
+        (TUdfExpr name argNode, [analyzeFunc name argInfo])
+    where
+        sTbl = case sTable of
+            (x:xs) -> xs
+            _ -> sTable
 
 analyzeValueExpr (UnaryOp name arg) sTable =
     let argNode = analyzeValueExpr arg sTable
@@ -149,21 +178,23 @@ analyzeTableExpr (TablePrimary t, sTable) =
 analyzeTableExpr (DerivedTable qe s, sTable) = undefined
 
 -- todo:
--- 1. update select position
+-- 1. update select position (is it necessary?)
 -- 2. check: no aggr func in where clause
--- 3. in case of group by exists, check:
---    a) select fields      = subset of group exprs + aggr funcs
---    b) fields in having   = subset of group exprs + aggr funcs
---    c) fields in order by = subset of group exprs + aggr funcs
 analyze :: QueryExpr -> TQueryExpr
 analyze qe = (Select' slist' from'
-                      (analyzeMaybeValueExpr (qeWhere qe) sTable)
-                      (analyzeListValueExpr (qeGroupBy qe) sTable) 
-                      (analyzeMaybeValueExpr (qeHaving qe) sTable)
-                      (analyzeListValueExpr (qeOrderBy qe) sTable)
+                      (analyzeMaybeValueExpr (qeWhere qe) [sTbl])
+                      groupBy'
+                      (analyzeMaybeValueExpr (qeHaving qe) [sTblOverGroup, sTbl])
+                      (analyzeListValueExpr (qeOrderBy qe) [sTblOverGroup, sTbl])
              ,foldl (\sinfo (x, y) -> sinfo ++ snd x) [] slist')
     where
         te' = map (\te -> analyzeTableExpr (te, M.empty)) (qeFrom qe)
         from' = map fst te'
-        sTable = foldl (\t (x, y) -> M.union t y) M.empty te'
-        slist' = map (\(field, alias) -> (analyzeValueExpr field sTable, alias)) (qeSelectList qe)
+        sTbl = foldl (\t (x, y) -> M.union t y) M.empty te'
+        slist' = map (\(field, alias) -> (analyzeValueExpr field [sTblOverGroup, sTbl], alias)) (qeSelectList qe)
+        groupBy' = analyzeListValueExpr (qeGroupBy qe) [sTbl]
+        sTblOverGroup =
+            case groupBy' of
+                [] -> sTbl  -- no group op, all fields are accessible
+                _  -> foldl (\t (x, y) -> M.union t (M.fromList (map (\s -> (sName s, s)) y))) M.empty groupBy'
+
