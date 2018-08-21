@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: fcfbc40923efa22caf6135df0bcf3e90ef373bb5786715a5a0ad537c05b496ed
+-- hash: 5c0faa098a0d46d2b3925e158d7b1e8b55f9851b63f187875fc2653b388fca7f
 
 name:           qc
 version:        0.1.0.0
@@ -39,6 +39,7 @@ library
   build-depends:
       base >=4.7 && <5
     , containers
+    , mtl
     , parsec
   default-language: Haskell2010
 
@@ -52,6 +53,7 @@ executable qc-exe
   build-depends:
       base >=4.7 && <5
     , containers
+    , mtl
     , parsec
     , qc
   default-language: Haskell2010
@@ -71,6 +73,7 @@ test-suite unittests
       HUnit
     , base >=4.7 && <5
     , containers
+    , mtl
     , parsec
     , qc
   default-language: Haskell2010
