@@ -2,6 +2,7 @@ module Main where
 
 import Parser
 import SemanticAnalyzer
+import PlanGenerator
 import qualified Text.Parsec as P
 
 saChecker :: String -> Either P.ParseError TQueryExpr

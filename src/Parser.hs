@@ -4,6 +4,7 @@ module Parser
       parseVE, parseQE
     ) where
 
+import Algebra (JoinType (..))
 import qualified Text.Parsec as P
 import qualified Text.Parsec.Char as PC
 import qualified Text.Parsec.Expr as PE
@@ -175,9 +176,6 @@ data TableExpr = TablePrimary String
                | DerivedTable QueryExpr String       -- must have an alias
                | TEJoin JoinType TableExpr TableExpr (Maybe ValueExpr)
                deriving (Eq, Show)
-
-data JoinType = InnerJoin | SemiJoin | AntiJoin | LeftJoin | FullJoin | CrossJoin
-              deriving (Eq, Show)
 
 parseQE :: String -> Either P.ParseError QueryExpr
 parseQE = P.parse (queryExpr <* P.eof) ""

@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 06bd185de30ef2869ba0753c8ec91ea8159261124ee09238a70ec80f6b52b554
+-- hash: fcfbc40923efa22caf6135df0bcf3e90ef373bb5786715a5a0ad537c05b496ed
 
 name:           qc
 version:        0.1.0.0
@@ -26,8 +26,10 @@ source-repository head
 
 library
   exposed-modules:
+      Algebra
       MockCatalog
       Parser
+      PlanGenerator
       SemanticAnalyzer
       SqlType
   other-modules:

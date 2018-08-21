@@ -1,15 +1,15 @@
 module SemanticAnalyzer
-    ( SqlType (..), SemanticInfo (..),
+    ( SemanticInfo (..),
       TValueExpr (..), TTableExpr (..), TQueryExpr (..),
       TValueExpr' (..), TTableExpr' (..), TQueryExpr' (..),
       analyze
     ) where
 
-import Parser
 import SqlType
+import Algebra (JoinType (..))
 import MockCatalog
+import Parser
 import qualified Data.Map as M
-import Control.Monad
 
 -- semantic information related types
 

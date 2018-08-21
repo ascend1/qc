@@ -3,9 +3,10 @@ module TestSemanticAnalyzer
     ) where
 
 import TestBase
-import MockCatalog
+import SqlType
 import Parser
 import SemanticAnalyzer
+import MockCatalog
 import qualified Test.HUnit as H
 
 type TestSAResult = Either String TQueryExpr
