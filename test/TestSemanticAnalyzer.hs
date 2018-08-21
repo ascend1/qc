@@ -43,6 +43,24 @@ simpleSelectTests =
 --     ,Left "unresolved reference: n_nationkey")
     ]
 
+whereTests :: [(String, TestSAResult)]
+whereTests =
+    [("select r_name from region where r_regionkey > 20"
+     ,Right (Select' {qeSelectList' = [((TIdentifier "r_name",[Symbol {sName = "r_name", sSqlType = StChar 25, sObjectType = Column, sSelectPos = -1, sRelId = -1, sId = 3
+                                                                      ,sParent = Just (Symbol {sName = "region", sSqlType = StUnknown, sObjectType = Table, sSelectPos = -1, sRelId = -1, sId = 1, sParent = Nothing})}])
+                                       ,Nothing)]
+                     ,qeFrom' = [(TTablePrimary "region",[Symbol {sName = "region", sSqlType = StUnknown, sObjectType = Table, sSelectPos = -1, sRelId = -1, sId = 1, sParent = Nothing}])]
+                     ,qeWhere' = Just (TBinaryOp ">" (TIdentifier "r_regionkey",[Symbol {sName = "r_regionkey", sSqlType = StInteger, sObjectType = Column, sSelectPos = -1, sRelId = -1, sId = 2
+                                                                                        ,sParent = Just (Symbol {sName = "region", sSqlType = StUnknown, sObjectType = Table, sSelectPos = -1, sRelId = -1, sId = 1, sParent = Nothing})}])
+                                                     (TExactNumericLiteral 20,[Symbol {sName = "", sSqlType = StInteger, sObjectType = ConstVal, sSelectPos = -1, sRelId = -1, sId = -1, sParent = Nothing}])
+                                      ,[Symbol {sName = ">", sSqlType = StBoolean, sObjectType = Func, sSelectPos = -1, sRelId = -1, sId = -1, sParent = Nothing}])
+                     ,qeGroupBy' = []
+                     ,qeHaving' = Nothing
+                     ,qeOrderBy' = []}
+            ,[Symbol {sName = "r_name", sSqlType = StChar 25, sObjectType = Column, sSelectPos = -1, sRelId = -1, sId = 3
+                     ,sParent = Just (Symbol {sName = "region", sSqlType = StUnknown, sObjectType = Table, sSelectPos = -1, sRelId = -1, sId = 1, sParent = Nothing})}]))
+    ]
+
 groupByTests :: [(String, TestSAResult)]
 groupByTests =
     [("select sum(r_regionkey), r_name from region group by r_name"
@@ -71,7 +89,7 @@ groupByTests =
     ]
 
 saTests :: [(String, TestSAResult)]
-saTests = simpleSelectTests ++ groupByTests
+saTests = simpleSelectTests ++ whereTests ++ groupByTests
 
 -- run tests
 
