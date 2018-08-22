@@ -55,6 +55,7 @@ data Expr = ConstInt Integer
           | Conj [TExpr]
           | Disj [TExpr]
           | Func String [TExpr]
+          | ExprList [TExpr]
 
 -- logical ops
 
