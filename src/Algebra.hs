@@ -66,6 +66,7 @@ data LogicalOp = LTableAccess RBTable
                | LAggr LogicalOp [TExpr]                  -- child, aggr_funcs
                | LGroup LogicalOp [TExpr] [TExpr]         -- child, group_exprs, aggr_funcs
                | LSort LogicalOp [TExpr]                  -- child, sort_specs
+               | LUnion [LogicalOp] [TExpr]               -- children, union_exprs
                | LCursor LogicalOp [TExpr]                -- child, named_exprs
 
 -- physical ops
