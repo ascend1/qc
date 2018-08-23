@@ -48,6 +48,7 @@ data TTableExpr' = TTablePrimary String
                  | TTEJoin JoinType TTableExpr TTableExpr (Maybe TValueExpr)
                  deriving (Eq, Show)
 
+-- todo: Maybe String for alias is not necessary from here
 type TQueryExpr = (TQueryExpr', [SemanticInfo])
 data TQueryExpr' = Select' {
     qeSelectList' :: [(TValueExpr, Maybe String)],
@@ -60,8 +61,11 @@ data TQueryExpr' = Select' {
 
 -- helper functions
 
+-- if symbol has a parent, take the same rel id as the parent
+-- otherwise let rel id = id (todo: assign rel id incrementally)
 makeSymbol :: String -> Metadata -> Maybe SemanticInfo -> SemanticInfo
-makeSymbol s m p = Symbol s (sqlType m) (objType m) (-1) (-1) (mId m) p
+makeSymbol s m p@(Just x) = Symbol s (sqlType m) (objType m) (-1) (sRelId x) (mId m) p
+makeSymbol s m Nothing = Symbol s (sqlType m) (objType m) (-1) (mId m) (mId m) Nothing
 
 analyzeMaybeValueExpr :: Maybe ValueExpr -> [SymbolTable] -> Maybe TValueExpr
 analyzeMaybeValueExpr mve st =
@@ -211,7 +215,7 @@ analyzeTableExpr (TablePrimary t, sTable) =
     let mdata = lookupMock t in
         case mdata of
             Just (m, cols) -> let tblSymbol = makeSymbol t m Nothing in
-                ((TTablePrimary t, [tblSymbol])
+                ((TTablePrimary t, map (\(s, mc) -> makeSymbol s mc (Just tblSymbol)) cols)
                 , foldl (\t (s, mc) -> M.insert s (makeSymbol s mc (Just tblSymbol)) t) sTable cols)
             Nothing -> error ("table not found: " ++ t)
 

@@ -2,7 +2,7 @@ module Algebra
     ( OpStats (..), ColStats (..),
       JoinType (..),
       RBColumn (..), RBTable (..),
-      TExpr (..), Expr (..), LogicalOp (..)
+      TExpr (..), Expr (..), LogicalOp (..), RLogicalOp (..)
     ) where
 
 import SqlType
@@ -45,6 +45,7 @@ type TExpr = (Expr, SqlType)
 data Expr = ConstInt Integer
           | ConstFloat Double
           | ConstString String
+          | ConstBool Bool
           | ConstNull
           | FieldVal TExpr Int Int
           | RidVal Int
@@ -56,17 +57,20 @@ data Expr = ConstInt Integer
           | Disj [TExpr]
           | Func String [TExpr]
           | ExprList [TExpr]
+          deriving (Eq, Show)
 
 -- logical ops
 
+type RLogicalOp = (LogicalOp, Int)                          -- rel id
 data LogicalOp = LTableAccess RBTable
-               | LSelect LogicalOp TExpr                  -- child, pred
-               | LProject LogicalOp [TExpr]               -- child, proj_exprs
-               | LJoin JoinType LogicalOp LogicalOp TExpr -- j_type, l_child, r_child, j_pred
-               | LAggr LogicalOp [TExpr]                  -- child, aggr_funcs
-               | LGroup LogicalOp [TExpr] [TExpr]         -- child, group_exprs, aggr_funcs
-               | LSort LogicalOp [TExpr]                  -- child, sort_specs
-               | LUnion [LogicalOp] [TExpr]               -- children, union_exprs
-               | LCursor LogicalOp [TExpr]                -- child, named_exprs
+               | LSelect RLogicalOp TExpr                   -- child, pred
+               | LProject RLogicalOp [TExpr]                -- child, proj_exprs
+               | LJoin JoinType TExpr RLogicalOp RLogicalOp -- j_type, j_pred, l_child, r_child
+               | LAggr RLogicalOp [TExpr]                   -- child, aggr_funcs
+               | LGroup RLogicalOp [TExpr] [TExpr]          -- child, group_exprs, aggr_funcs
+               | LSort RLogicalOp [TExpr]                   -- child, sort_specs
+               | LUnion [RLogicalOp] [TExpr]                -- children, union_exprs
+               | LCursor RLogicalOp [TExpr]                 -- child, named_exprs
+               deriving (Eq, Show)
 
 -- physical ops

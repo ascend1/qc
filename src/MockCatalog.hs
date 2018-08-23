@@ -23,7 +23,9 @@ newtype Catalog = Catalog {
 
 mockCatalog :: Catalog
 mockCatalog = Catalog $ M.fromList
-    [("region", (Meta 1 Table StUnknown
+    [("dummy", (Meta 100 Table StUnknown
+     ,[("dummy", Meta 101 Column (StChar 1))]))
+    ,("region", (Meta 1 Table StUnknown
      ,[("r_regionkey", Meta 2 Column StInteger)
       ,("r_name", Meta 3 Column (StChar 25))
       ,("r_comment", Meta 4 Column (StVarchar 255))
