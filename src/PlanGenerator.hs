@@ -125,11 +125,16 @@ genFrom tl = do
 genSelectList :: RLogicalOp -> [(TValueExpr, a)] -> PGen RLogicalOp
 genSelectList _ [] = error "no select expressions"
 genSelectList child sl = do
-    slFields <- mapM genValueExpr slNoAlias
-    modify (updateFieldMap slFields)
+    slRes <- mapM genValueExpr slNoAlias
+    modify (updateFieldMap $ stripExprList slRes)
     ns <- get
-    return (LProject child slFields, currRelId ns)
+    return (LProject child (stripExprList slRes), currRelId ns)
     where
+        stripExprList l =
+            case l of
+                x@[a] -> case a of (ExprList b, _) -> b
+                                   _ -> x
+                y -> y
         slNoAlias = map fst sl
         updateFieldMap fields s = PgState newFmp (tblMapping s) nextRelId
             where

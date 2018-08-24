@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5c0faa098a0d46d2b3925e158d7b1e8b55f9851b63f187875fc2653b388fca7f
+-- hash: a6ddf6229ff9f9bbed3fa5d1732d14345c45a214fd81222fb0ec4b0661c8fc70
 
 name:           qc
 version:        0.1.0.0
@@ -64,6 +64,7 @@ test-suite unittests
   other-modules:
       TestBase
       TestParser
+      TestPlanGenerator
       TestSemanticAnalyzer
       Paths_qc
   hs-source-dirs:

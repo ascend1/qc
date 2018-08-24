@@ -173,6 +173,7 @@ analyzeValueExpr (Identifier a) sTable =
             Nothing -> error ("unresolved reference: " ++ a)
 
 -- todo: count(*) ?
+-- todo: symbol order in sTable is the key order, not necessarily select order
 analyzeValueExpr Asterisk sTable =
     (TAsterisk, M.elems (head sTable))
 
