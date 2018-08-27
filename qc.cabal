@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a6ddf6229ff9f9bbed3fa5d1732d14345c45a214fd81222fb0ec4b0661c8fc70
+-- hash: 1020ef878b233d783d90cd145413295a0cd2eca7e70c4ab945e88b2b25d25175
 
 name:           qc
 version:        0.1.0.0
@@ -30,6 +30,7 @@ library
       MockCatalog
       Parser
       PlanGenerator
+      Reorder
       SemanticAnalyzer
       SqlType
   other-modules:

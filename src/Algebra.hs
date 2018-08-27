@@ -2,7 +2,9 @@ module Algebra
     ( OpStats (..), ColStats (..),
       JoinType (..),
       RBColumn (..), RBTable (..),
-      TExpr (..), Expr (..), LogicalOp (..), RLogicalOp (..)
+      TExpr (..), Expr (..),
+      LogicalOp (..), RLogicalOp (..), PhysicalOp (..), RPhysicalOp (..),
+      isLeaf, isJoin
     ) where
 
 import SqlType
@@ -73,4 +75,28 @@ data LogicalOp = LTableAccess RBTable
                | LCursor RLogicalOp [TExpr]                 -- child, named_exprs
                deriving (Eq, Show)
 
+isLeaf :: RLogicalOp -> Bool
+isLeaf (LTableAccess{}, _) = True
+isLeaf _ = False
+
+isJoin :: RLogicalOp -> Bool
+isJoin (LJoin{}, _) = True
+isJoin _ = False
+
 -- physical ops
+
+type RPhysicalOp = (PhysicalOp, Int)
+data PhysicalOp = PTableScan RBTable
+                | PIndexSearch RBTable
+                | PFilter RPhysicalOp TExpr
+                | PMat RPhysicalOp [TExpr]
+                | PLoopJoin JoinType TExpr RPhysicalOp RPhysicalOp
+                | PHashJoin JoinType TExpr RPhysicalOp RPhysicalOp
+                | PIndexJoin JoinType TExpr RPhysicalOp RPhysicalOp
+                | PScanAggr RPhysicalOp [TExpr]
+                | PHashGroup RPhysicalOp [TExpr] [TExpr]
+                | PArrayGroup RPhysicalOp [TExpr] [TExpr]
+                | PFullSort RPhysicalOp [TExpr]
+                | PUnionAll [RPhysicalOp] [TExpr]
+                | PFetch RPhysicalOp [TExpr]
+                deriving (Eq, Show)
