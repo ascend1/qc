@@ -4,7 +4,10 @@ module Reorder
 
 import Algebra
 import SqlType
+import Visit
 import qualified Data.Set as Set
+import Control.Monad.State
+import Control.Monad.Reader
 
 type IdSet = Set.Set Int
 type RuleList = [(IdSet, IdSet)]
@@ -21,8 +24,18 @@ data RelTes = RelTes {
 } deriving (Eq, Show)
 
 data OpTree = Node RelTes OpTree OpTree
-            | Nil
+            | Leaf RelTes
+            | Dummy
             deriving (Eq, Show)
+
+type OpTreeList = [OpTree]
+
+getRelFromOpTree :: OpTree -> RLogicalOp
+getRelFromOpTree (Node rTes l r) = getRel rTes
+getRelFromOpTree (Leaf rTes) = getRel rTes
+
+makeOpTreeFromRel :: RLogicalOp -> OpTree
+makeOpTreeFromRel op = Leaf $ RelTes op (TES Set.empty False False)
 
 getJoinType :: RelTes -> JoinType
 getJoinType rt =
@@ -98,3 +111,64 @@ isReorderPossible :: RLogicalOp -> Bool
 isReorderPossible (LJoin{}, _) = True
 isReorderPossible (LSelect child _, _) = isJoin child
 isReorderPossible _ = False
+
+constructOpTree :: RLogicalOp -> State OpTreeList ()
+constructOpTree op@(LTableAccess t, _) =
+    modify (\s -> makeOpTreeFromRel op : s)
+
+constructOpTree (LProject child exprs, rid) =
+    modify (\s -> makeOpTreeFromRel (LProject (getRelFromOpTree (head s)) exprs, rid) : tail s)
+
+constructOpTree (LAggr child aggrs, rid) =
+    modify (\s -> makeOpTreeFromRel (LAggr (getRelFromOpTree (head s)) aggrs, rid) : tail s)
+
+constructOpTree (LGroup child gExprs aggrs, rid) =
+    modify (\s -> makeOpTreeFromRel (LGroup (getRelFromOpTree (head s)) gExprs aggrs, rid) : tail s)
+
+constructOpTree (LSort child exprs, rid) =
+    modify (\s -> makeOpTreeFromRel (LSort (getRelFromOpTree (head s)) exprs, rid) : tail s)
+
+constructOpTree (LUnion children exprs, rid) =
+    modify (\s ->
+        let n = length children in
+        makeOpTreeFromRel (LUnion (map getRelFromOpTree (reverse $ take n s)) exprs, rid) : drop n s)
+
+constructOpTree (LCursor child exprs, rid) =
+    modify (\s -> makeOpTreeFromRel (LCursor (getRelFromOpTree (head s)) exprs, rid) : tail s)
+
+constructOpTreeWithReorder :: RLogicalOp -> RLogicalOp -> State OpTreeList ()
+constructOpTreeWithReorder op parent = modify f
+    where
+        f (rt:lt:xs) =
+            let joinTree = if isJoin op then Node (RelTes op (TES Set.empty False False)) lt rt
+                           else Node (RelTes op (TES Set.empty False False)) rt Dummy
+            in
+            if isReorderPossible parent then joinTree : xs  -- reorder later
+            else reorder' joinTree : xs
+        f _ = error "invalid state: at least two subtrees needed"
+
+-- visitor
+
+reorderVisitor :: LogicalVisitor OpTreeList ()
+reorderVisitor = LogicalVisitor reorderVTD reorderVBU
+
+reorderVTD :: RLogicalOp -> RLogicalOp -> Bool
+reorderVTD op _ = isLeaf op
+
+reorderVBU :: RLogicalOp -> RLogicalOp -> State OpTreeList ()
+reorderVBU op parent =
+    if isReorderPossible op
+        then constructOpTreeWithReorder op parent
+    else constructOpTree op
+
+-- todo: implement actual reorder
+reorder' :: OpTree -> OpTree
+reorder' t = undefined
+
+reorder :: RLogicalOp -> RLogicalOp
+reorder root =
+    case res of
+        [x] -> getRelFromOpTree x
+        _ -> error "reorder process was wrong"
+    where
+        res = execState (runReader (visitLogicalTree root) reorderVisitor) []

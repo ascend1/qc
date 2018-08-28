@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1020ef878b233d783d90cd145413295a0cd2eca7e70c4ab945e88b2b25d25175
+-- hash: a9f72a6d45a78a0843520480177dd9f7ceb7842a02f48921e65df6468eb39e43
 
 name:           qc
 version:        0.1.0.0
@@ -33,6 +33,7 @@ library
       Reorder
       SemanticAnalyzer
       SqlType
+      Visit
   other-modules:
       Paths_qc
   hs-source-dirs:

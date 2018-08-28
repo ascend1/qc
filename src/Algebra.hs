@@ -73,6 +73,7 @@ data LogicalOp = LTableAccess RBTable
                | LSort RLogicalOp [TExpr]                   -- child, sort_specs
                | LUnion [RLogicalOp] [TExpr]                -- children, union_exprs
                | LCursor RLogicalOp [TExpr]                 -- child, named_exprs
+               | LNullPtr
                deriving (Eq, Show)
 
 isLeaf :: RLogicalOp -> Bool
