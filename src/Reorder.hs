@@ -6,6 +6,7 @@ import Algebra
 import SqlType
 import Visit
 import qualified Data.Set as Set
+import qualified Data.Map as Map
 import Control.Monad.State
 import Control.Monad.Reader
 
@@ -23,6 +24,13 @@ data RelTes = RelTes {
     getTes :: TES
 } deriving (Eq, Show)
 
+insertTes :: Int -> RelTes -> RelTes
+insertTes nid relTes =
+    RelTes (getRel relTes) newTes
+    where
+        newTes = TES (Set.insert nid (tes oldTes)) (lRejectNulls oldTes) (rRejectNulls oldTes)
+        oldTes = getTes relTes
+
 data OpTree = Node RelTes OpTree OpTree
             | Leaf RelTes
             | Dummy
@@ -36,6 +44,30 @@ getRelFromOpTree (Leaf rTes) = getRel rTes
 
 makeOpTreeFromRel :: RLogicalOp -> OpTree
 makeOpTreeFromRel op = Leaf $ RelTes op (TES Set.empty False False)
+
+isDummyOp :: OpTree -> Bool
+isDummyOp Dummy = True
+isDummyOp _ = False
+
+insertOpTes :: Int -> OpTree -> OpTree
+insertOpTes nid (Node relTes l r) = Node (insertTes nid relTes) l r
+insertOpTes nid (Leaf relTes) = Leaf (insertTes nid relTes)
+insertOpTes nid Dummy = error "inserting node id into dummy node, reorder logic error"
+
+type Edge = (JoinType, TExpr)
+
+mergeEdge :: Edge -> Edge -> Edge
+mergeEdge (jtl, pl) (jtr, pr) =
+    if jtl == InnerJoin && jtr == InnerJoin
+        then (InnerJoin, (Conj [pl, pr], StBoolean))
+    else error "merging non-inner joins: reorder logic error"
+
+data HyperEdge = HyperEdge {
+    constraint :: IdSet,
+    lTes :: IdSet,
+    ruleList :: RuleList,
+    edge :: Edge
+} deriving (Eq, Show)
 
 getJoinType :: RelTes -> JoinType
 getJoinType rt =
@@ -161,9 +193,34 @@ reorderVBU op parent =
         then constructOpTreeWithReorder op parent
     else constructOpTree op
 
+-- reorder
+
+type EdgeMap = Map.Map (Int, Int) Edge
+
+data ReorderState = ReorderState {
+    getRelIdMap :: Map.Map Int Int, -- rel id -> node id
+    getEdgeMap :: EdgeMap,
+    getHyperEdges :: [HyperEdge],
+    getNodeMap :: Map.Map Int RLogicalOp
+} deriving (Eq, Show)
+
+collectEdges :: OpTree -> State ReorderState OpTree
+collectEdges op@(Node relTes l r) = undefined
+collectEdges op@(Leaf relTes) = do
+    oldState <- get
+    modify f         -- node map size increased
+    return $ insertOpTes (Map.size $ getNodeMap oldState) op
+    where
+        -- todo: extract rel ids from op and update relIdMap
+        f s = let nodeMap = getNodeMap s
+                  nodeId = Map.size nodeMap in
+            ReorderState (getRelIdMap s) (getEdgeMap s) (getHyperEdges s) (Map.insert nodeId (getRel relTes) nodeMap)
+
 -- todo: implement actual reorder
 reorder' :: OpTree -> OpTree
 reorder' t = undefined
+
+-- api
 
 reorder :: RLogicalOp -> RLogicalOp
 reorder root =
