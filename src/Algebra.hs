@@ -4,6 +4,7 @@ module Algebra
       RBColumn (..), RBTable (..),
       TExpr (..), Expr (..),
       LogicalOp (..), RLogicalOp (..), PhysicalOp (..), RPhysicalOp (..),
+      isConstVal, isConstExpr, isLeafExpr,
       isLeaf, isJoin
     ) where
 
@@ -59,7 +60,23 @@ data Expr = ConstInt Integer
           | Disj [TExpr]
           | Func String [TExpr]
           | ExprList [TExpr]
+          | ENullPtr
           deriving (Eq, Show)
+
+isConstVal :: TExpr -> Bool
+isConstVal (ConstInt _, _) = True
+isConstVal (ConstFloat _, _) = True
+isConstVal (ConstString _, _) = True
+isConstVal (ConstBool _, _) = True
+isConstVal _ = False
+
+isConstExpr :: TExpr -> Bool
+isConstExpr (ConstNull, _) = True
+isConstExpr e = isConstVal e
+
+isLeafExpr :: TExpr -> Bool
+isLeafExpr (RidVal _, _) = True
+isLeafExpr e = isConstExpr e
 
 -- logical ops
 

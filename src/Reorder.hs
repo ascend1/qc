@@ -5,6 +5,7 @@ module Reorder
 import Algebra
 import SqlType
 import Visit
+import PlanUtility
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Control.Monad.State
@@ -24,12 +25,15 @@ data RelTes = RelTes {
     getTes :: TES
 } deriving (Eq, Show)
 
-insertTes :: Int -> RelTes -> RelTes
-insertTes nid relTes =
+insertTes :: IdSet -> RelTes -> RelTes
+insertTes nids relTes =
     RelTes (getRel relTes) newTes
     where
-        newTes = TES (Set.insert nid (tes oldTes)) (lRejectNulls oldTes) (rRejectNulls oldTes)
+        newTes = TES (Set.union nids (tes oldTes)) (lRejectNulls oldTes) (rRejectNulls oldTes)
         oldTes = getTes relTes
+
+getRelTes :: RelTes -> IdSet
+getRelTes = tes . getTes
 
 data OpTree = Node RelTes OpTree OpTree
             | Leaf RelTes
@@ -49,10 +53,15 @@ isDummyOp :: OpTree -> Bool
 isDummyOp Dummy = True
 isDummyOp _ = False
 
-insertOpTes :: Int -> OpTree -> OpTree
-insertOpTes nid (Node relTes l r) = Node (insertTes nid relTes) l r
-insertOpTes nid (Leaf relTes) = Leaf (insertTes nid relTes)
-insertOpTes nid Dummy = error "inserting node id into dummy node, reorder logic error"
+insertOpTes :: IdSet -> OpTree -> OpTree
+insertOpTes nids (Node relTes l r) = Node (insertTes nids relTes) l r
+insertOpTes nids (Leaf relTes) = Leaf (insertTes nids relTes)
+insertOpTes nids Dummy = error "inserting node id into dummy node, reorder logic error"
+
+getOpTes :: OpTree -> IdSet
+getOpTes (Node rTes l r) = getRelTes rTes
+getOpTes (Leaf rTes) = getRelTes rTes
+getOpTes Dummy = error "getting TES from dummy node, reorder logic error"
 
 type Edge = (JoinType, TExpr)
 
@@ -75,6 +84,14 @@ getJoinType rt =
     case rel of
         (LJoin jt _ _ _, _) -> jt
         _ -> InnerJoin
+
+getJoinPred :: RelTes -> TExpr
+getJoinPred rt =
+    let rel = getRel rt in
+    case rel of
+        (LJoin _ jp _ _, _) -> jp
+        (LSelect _ p, _) -> p
+        _ -> error "Invalid intermediate operator"
 
 isAssociative :: RelTes -> RelTes -> Bool
 isAssociative lhs rhs =
@@ -185,7 +202,7 @@ reorderVisitor :: LogicalVisitor OpTreeList ()
 reorderVisitor = LogicalVisitor reorderVTD reorderVBU
 
 reorderVTD :: RLogicalOp -> RLogicalOp -> Bool
-reorderVTD op _ = isLeaf op
+reorderVTD op _ = not $ isLeaf op
 
 reorderVBU :: RLogicalOp -> RLogicalOp -> State OpTreeList ()
 reorderVBU op parent =
@@ -205,16 +222,34 @@ data ReorderState = ReorderState {
 } deriving (Eq, Show)
 
 collectEdges :: OpTree -> State ReorderState OpTree
-collectEdges op@(Node relTes l r) = undefined
+collectEdges op@(Node relTes l r) = do
+    modify f
+    return $ insertOpTes newTes op
+    where
+        newTes = Set.union (getOpTes l) (getOpTes r)
+        jType = getJoinType relTes
+        jPred = getJoinPred relTes
+        l_reject = False  -- todo: get actual value
+        r_reject = False  -- todo: get actual value
+        terms = case jPred of
+            (Conj exprs, _) | jType == InnerJoin -> exprs
+                            | otherwise -> [jPred]
+            _ -> [jPred]
+        derivedTerms = terms -- todo: implement comparison derivation (eq map, e.g., a = b, b = c then a = c)
+        f s = let edgeMap = getEdgeMap s
+                  hyperEdges = getHyperEdges s in
+            ReorderState (getRelIdMap s) edgeMap hyperEdges (getNodeMap s)  -- todo: extract rules
+
 collectEdges op@(Leaf relTes) = do
     oldState <- get
     modify f         -- node map size increased
-    return $ insertOpTes (Map.size $ getNodeMap oldState) op
+    return $ insertOpTes (Set.fromList [Map.size $ getNodeMap oldState]) op
     where
-        -- todo: extract rel ids from op and update relIdMap
         f s = let nodeMap = getNodeMap s
-                  nodeId = Map.size nodeMap in
-            ReorderState (getRelIdMap s) (getEdgeMap s) (getHyperEdges s) (Map.insert nodeId (getRel relTes) nodeMap)
+                  nodeId = Map.size nodeMap
+                  rel = getRel relTes
+                  newRelIds = foldl (\m rid -> Map.insert rid nodeId m) (getRelIdMap s) (extractRidsRel rel) in
+            ReorderState newRelIds (getEdgeMap s) (getHyperEdges s) (Map.insert nodeId rel nodeMap)
 
 -- todo: implement actual reorder
 reorder' :: OpTree -> OpTree
