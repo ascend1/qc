@@ -1,5 +1,5 @@
 module PlanUtility
-    ( extractRidsRel
+    ( extractRidsRel, extractRidsExpr
     ) where
 
 import Algebra
@@ -22,7 +22,7 @@ extractRidsRelVBU op@(_, relId) parent =
 extractRidsRel :: RLogicalOp -> [Int]
 extractRidsRel root = execState (runReader (visitLogicalTree root) extractRidsRelVisitor) []
 
--- extractRidExpr
+-- extractRidsExpr
 
 extractRidsExprVisitor :: ExprVisitor [Int] ()
 extractRidsExprVisitor = ExprVisitor extractRidsExprVTD extractRidsExprVBU
