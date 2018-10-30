@@ -34,6 +34,16 @@ addRule ref from to =
                 in
             (new_constraint, new_ruleList)
 
+checkRules :: IdSet -> RuleList -> Bool
+checkRules constraint =
+    foldl f True
+    where
+        f False _ = False
+        f True rule@(from, to)
+            | Set.intersection constraint from == Set.empty = True
+            | Set.isSubsetOf to constraint = True
+            | otherwise = False
+
 data TES = TES {
     tes :: IdSet,
     lRejectNulls :: Bool,
@@ -88,9 +98,10 @@ getOpRelTes (Node rTes l r) = rTes
 getOpRelTes (Leaf rTes) = rTes
 getOpRelTes Dummy = error "getting RELTES from dummy node, reorder logic error"
 
-visitOpTree :: OpTree -> (OpTree -> State RuleList ()) -> State RuleList ()
+-- post-order visiting
+visitOpTree :: (Monad m) => OpTree -> (OpTree -> m a) -> m a
 visitOpTree op@(Node relTes l r) f = f r *> f l *> f op
-visitOpTree _ _ = return ()
+visitOpTree op f = f op
 
 type Edge = (JoinType, TExpr)
 
@@ -200,6 +211,8 @@ extractRulesL refs rhs lhs@(Node _ a b) = do
         l_tes = getOpRelTes lhs
         r_tes = getOpRelTes rhs
 
+extractRulesL _ _ _ = return ()
+
 --   lhs
 --  /   \
 -- a    rhs
@@ -214,6 +227,8 @@ extractRulesR refs lhs rhs@(Node _ b c) = do
         c_summary = getOpTes c
         l_tes = getOpRelTes lhs
         r_tes = getOpRelTes rhs
+
+extractRulesR _ _ _ = return ()
 
 isReorderPossible :: RLogicalOp -> Bool
 isReorderPossible (LJoin{}, _) = True
@@ -273,6 +288,11 @@ reorderVBU op parent =
 
 type EdgeMap = Map.Map (Int, Int) Edge
 
+makeEdgeKey :: JoinType -> Int -> Int -> (Int, Int)
+makeEdgeKey jType lhs rhs
+    | jType == InnerJoin && rhs < lhs = (rhs, lhs)
+    | otherwise = (lhs, rhs)
+
 data ReorderState = ReorderState {
     getRelIdMap :: Map.Map Int Int, -- rel id -> node id
     getEdgeMap :: EdgeMap,
@@ -281,15 +301,25 @@ data ReorderState = ReorderState {
 } deriving (Eq, Show)
 
 collectEdges' :: OpTree -> (EdgeMap, [HyperEdge]) -> TExpr -> (EdgeMap, [HyperEdge])
-collectEdges' op@(Node _ l r) (em, he) term =
-    (em, he) -- build the correct result
+collectEdges' op@(Node relTes l r) (em, he) term =
+    if Set.size constraint'' > 2 || not (checkRules constraint'' rules'') then
+        (em, he ++ [HyperEdge constraint'' (getOpTes l) rules'' (jType, term)])
+    else
+        let lhs = Set.findMin $ Set.intersection constraint'' (getOpTes l)
+            rhs = Set.findMin $ Set.intersection constraint'' (getOpTes r) in
+        (Map.adjust (`mergeEdge` (jType, term)) (makeEdgeKey jType lhs rhs) em, he)
     where
-        term_rids = foldl (\s rid -> Set.insert rid s) Set.empty (extractRidsExpr term)
+        jType = getJoinType relTes
+        term_rids = foldr Set.insert Set.empty (extractRidsExpr term)
         f rids_l rids_r =
             if Set.intersection rids_l rids_r == Set.empty
                 then Set.union rids_l rids_r
             else rids_l
         constraint = f (f term_rids (getOpTes l)) (getOpTes r)
+        -- todo: Currently CD-B because of using Set.empty as refs. Pass NodeMap in
+        -- and implement extract_refs to get CD-C.
+        (constraint' , rules' ) = execState (visitOpTree l (extractRulesL Set.empty op)) (constraint , [])
+        (constraint'', rules'') = execState (visitOpTree r (extractRulesR Set.empty op)) (constraint', rules')
 
 collectEdges :: OpTree -> State ReorderState OpTree
 collectEdges op@(Node relTes l r) = do
@@ -324,7 +354,10 @@ collectEdges op@(Leaf relTes) = do
 
 -- todo: implement actual reorder
 reorder' :: OpTree -> OpTree
-reorder' t = undefined
+reorder' t =
+    t'
+    where
+        (t', rstate) = runState (visitOpTree t collectEdges) (ReorderState Map.empty Map.empty [] Map.empty)
 
 -- api
 
