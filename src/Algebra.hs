@@ -4,8 +4,8 @@ module Algebra
       RBColumn (..), RBTable (..),
       TExpr (..), Expr (..),
       LogicalOp (..), RLogicalOp (..), PhysicalOp (..), RPhysicalOp (..),
-      isConstVal, isConstExpr, isLeafExpr,
-      isLeaf, isJoin
+      isConstVal, isConstExpr, isLeafExpr, isNullExpr,
+      isLeaf, isJoin, isNullRel
     ) where
 
 import SqlType
@@ -78,6 +78,10 @@ isLeafExpr :: TExpr -> Bool
 isLeafExpr (RidVal _, _) = True
 isLeafExpr e = isConstExpr e
 
+isNullExpr :: TExpr -> Bool
+isNullExpr (ENullPtr, _) = True
+isNullExpr _ = False
+
 -- logical ops
 
 type RLogicalOp = (LogicalOp, Int)                          -- rel id
@@ -100,6 +104,10 @@ isLeaf _ = False
 isJoin :: RLogicalOp -> Bool
 isJoin (LJoin{}, _) = True
 isJoin _ = False
+
+isNullRel :: RLogicalOp -> Bool
+isNullRel (LNullPtr, _) = True
+isNullRel _ = False
 
 -- physical ops
 

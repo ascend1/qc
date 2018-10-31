@@ -8,6 +8,7 @@ import Visit
 import PlanUtility
 import qualified Data.Set as Set
 import qualified Data.Map as Map
+import Data.Maybe
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Reader
@@ -352,12 +353,49 @@ collectEdges op@(Leaf relTes) = do
                   newRelIds = foldl (\m rid -> Map.insert rid nodeId m) (getRelIdMap s) (extractRidsRel rel) in
             ReorderState newRelIds (getEdgeMap s) (getHyperEdges s) (Map.insert nodeId rel nodeMap)
 
--- todo: implement actual reorder
+collectEdges op = return op
+
+type MinStruct = (RLogicalOp, TExpr, ((Int, Int), Edge)) -- (min_plan, min_pred, min_edge)
+
+-- todo: implement the actual cost estimation
+isBetter :: RLogicalOp -> RLogicalOp -> Bool
+isBetter _ _ = True
+
+-- todo: implement move node
+moveNode :: Int -> Int -> RLogicalOp -> ReorderState -> ReorderState
+moveNode from to = undefined
+
+greedyDp :: (ReorderState, MinStruct) -> (ReorderState, MinStruct)
+greedyDp s@(rs, m@(minPlan, minPred, minEdge)) =
+    let relIdMap = getRelIdMap rs
+        edges = getEdgeMap rs
+        hyperEdges = getHyperEdges rs
+        nodes = getNodeMap rs in
+    if Map.size edges > 0 then
+        let newMin@(newPlan, newPred, newEdge@(k@(minLhs, minRhs), e)) = Map.foldlWithKey (g nodes) m edges
+            newEdges = Map.delete k edges
+            newRs = moveNode minRhs minLhs newPlan (ReorderState relIdMap newEdges hyperEdges nodes) in
+        greedyDp (newRs, newMin)
+    else s
+    where
+        g n m@(minPlan, minPred, minEdge) k e@(jType, jPred) =
+            let lChild = fromMaybe (LNullPtr, -1) (Map.lookup (fst k) n)
+                rChild = fromMaybe (LNullPtr, -1) (Map.lookup (snd k) n)
+                isJoin = not (isNullRel lChild || isNullRel rChild)
+                newPlan = if isJoin then (LJoin jType jPred lChild rChild, -1)
+                          else (LSelect (if isNullRel lChild then rChild else lChild) jPred, -1) in
+            if isBetter minPlan newPlan then (newPlan, jPred, (k, e))
+            else m
+
 reorder' :: OpTree -> OpTree
 reorder' t =
-    t'
+    case nodes of
+        [x] -> makeOpTreeFromRel x
+        _ -> error "reorder process produces multiple results"
     where
-        (t', rstate) = runState (visitOpTree t collectEdges) (ReorderState Map.empty Map.empty [] Map.empty)
+        (t', rs) = runState (visitOpTree t collectEdges) (ReorderState Map.empty Map.empty [] Map.empty)
+        (finalRs, _) = greedyDp (rs, ((LNullPtr, -1), (ENullPtr, StUnknown), ((-1, -1), (InnerJoin, (ENullPtr, StUnknown)))))
+        nodes = Map.elems $ getNodeMap finalRs
 
 -- api
 
