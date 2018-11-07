@@ -1,5 +1,5 @@
 module Reorder
-    (
+    ( reorder
     ) where
 
 import Algebra
@@ -14,6 +14,11 @@ import Control.Monad.State
 import Control.Monad.Reader
 
 type IdSet = Set.Set Int
+
+updateIdSet :: IdSet -> Int -> Int -> IdSet
+updateIdSet idSet from to =
+    Set.map (\x -> if x == from then to else x) idSet
+
 type RuleList = [(IdSet, IdSet)]
 
 addRule :: IdSet -> IdSet -> IdSet -> State (IdSet, RuleList) ()
@@ -118,6 +123,22 @@ data HyperEdge = HyperEdge {
     ruleList :: RuleList,
     edge :: Edge
 } deriving (Eq, Show)
+
+updateHyperEdge :: HyperEdge -> Int -> Int -> HyperEdge
+updateHyperEdge he from to =
+    HyperEdge newConstraint newLTes newRuleList (edge he)
+    where
+        constraint' = updateIdSet (constraint he) from to
+        newLTes = updateIdSet (lTes he) from to
+        (newConstraint, newRuleList) = foldl updateRules (constraint', []) (ruleList he)
+        updateRules (resultC, resultRL) rule@(rf, rt) =
+            let newRf = updateIdSet rf from to
+                newRt = updateIdSet rt from to
+                resultC' = if Set.intersection resultC newRf /= Set.empty
+                               then Set.union resultC newRt
+                           else resultC in
+            if Set.isSubsetOf newRt resultC' then (resultC', resultRL)
+            else (resultC', resultRL ++ [(newRf, newRt)])
 
 getJoinType :: RelTes -> JoinType
 getJoinType rt =
@@ -361,9 +382,44 @@ type MinStruct = (RLogicalOp, TExpr, ((Int, Int), Edge)) -- (min_plan, min_pred,
 isBetter :: RLogicalOp -> RLogicalOp -> Bool
 isBetter _ _ = True
 
--- todo: implement move node
 moveNode :: Int -> Int -> RLogicalOp -> ReorderState -> ReorderState
-moveNode from to = undefined
+moveNode from to newPlan rs =
+    ReorderState (getRelIdMap rs) newEdges newHyperEdges newNodes
+    where
+        edges = getEdgeMap rs
+        hyperEdges = getHyperEdges rs
+        nodes = getNodeMap rs
+        edges' = Map.foldlWithKey updateEdges edges edges
+        (newHyperEdges, newEdges) = foldl updateHyperEdges ([], edges') hyperEdges
+        newNodes = Map.adjust (\_ -> newPlan) from (Map.delete to nodes)
+        updateEdges result k@(lhs, rhs) e@(jType, jPred) =
+            let newLhs = if lhs == from then to else lhs
+                newRhs = if rhs == from then to else rhs
+                newEdgeKey = makeEdgeKey jType newLhs newRhs
+                result' = Map.delete k result in
+            if newLhs /= lhs || newRhs /= rhs then
+                case Map.lookup newEdgeKey result of
+                    Just _  -> Map.adjust (`mergeEdge` e) newEdgeKey result'
+                    Nothing -> Map.insert newEdgeKey e result'
+            else result
+        updateHyperEdges (resultHE, resultE) he =
+            let he' = updateHyperEdge he from to
+                heConstraint = constraint he'
+                heLSummary = lTes he'
+                heRules = ruleList he'
+                heEdge@(heJType, heJPred) = edge he' in
+            if Set.size heConstraint == 2 && checkRules heConstraint heRules then
+                let id0 = Set.elemAt 0 heConstraint
+                    id1 = Set.elemAt 1 heConstraint
+                    lhs = if not $ Set.member id0 heLSummary then id1 else id0
+                    rhs = if lhs == id0 then id1 else id0
+                    newEdgeKey = makeEdgeKey heJType lhs rhs
+                    resultE' =
+                        case Map.lookup newEdgeKey resultE of
+                            Just _  -> Map.adjust (`mergeEdge` heEdge) newEdgeKey resultE
+                            Nothing -> Map.insert newEdgeKey heEdge resultE
+                in (resultHE, resultE')
+            else (resultHE ++ [he'], resultE)
 
 greedyDp :: (ReorderState, MinStruct) -> (ReorderState, MinStruct)
 greedyDp s@(rs, m@(minPlan, minPred, minEdge)) =

@@ -4,6 +4,7 @@ import Parser
 import SemanticAnalyzer
 import PlanGenerator
 import Algebra
+import Reorder
 import qualified Text.Parsec as P
 import qualified Data.Map as M
 import Control.Monad.State
@@ -19,6 +20,14 @@ pgChecker s =
     case parseQE s of
         Left x -> Left x
         Right x -> Right . fst $ runState (genQueryExpr (analyze x)) emptyState
+            where
+                emptyState = PgState M.empty M.empty 100
+
+qoChecker :: String -> Either P.ParseError RLogicalOp
+qoChecker s =
+    case parseQE s of
+        Left x -> Left x
+        Right x -> Right . reorder . fst $ runState (genQueryExpr (analyze x)) emptyState
             where
                 emptyState = PgState M.empty M.empty 100
 

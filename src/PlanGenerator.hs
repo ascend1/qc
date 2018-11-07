@@ -146,7 +146,9 @@ genWhereClause child e =
     case e of
         Just expr -> do
             pred <- genValueExpr expr
-            return (LSelect child pred, -1)  -- no rel id for logical select
+            case child of
+                join@(LJoin jType _ lChild rChild, relId) -> return (LJoin jType pred lChild rChild, relId)
+                _ -> return (LSelect child pred, -1)  -- no rel id for logical select
         Nothing -> return child
 
 genQueryExpr :: TQueryExpr -> PGen RLogicalOp
