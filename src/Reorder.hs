@@ -104,10 +104,42 @@ getOpRelTes (Node rTes l r) = rTes
 getOpRelTes (Leaf rTes) = rTes
 getOpRelTes Dummy = error "getting RELTES from dummy node, reorder logic error"
 
--- post-order visiting
+-- post-order visiting, no change on the tree
 visitOpTree :: (Monad m) => OpTree -> (OpTree -> m a) -> m a
-visitOpTree op@(Node relTes l r) f = f r *> f l *> f op
+visitOpTree op@(Node relTes l r) f = visitOpTree r f *> visitOpTree l f *> f op
 visitOpTree op f = f op
+
+-- zipper for OpTree
+data OpTreeCrumb = LeftCrumb RelTes OpTree
+                 | RightCrumb RelTes OpTree
+                 deriving (Eq, Show)
+
+type OpTreeCrumbs = [OpTreeCrumb]
+type OpTreeZipper = (OpTree, OpTreeCrumbs)
+
+goLeft :: OpTreeZipper -> OpTreeZipper
+goLeft (Node rTes l r, otc) = (l, LeftCrumb rTes r : otc)
+
+goRight :: OpTreeZipper -> OpTreeZipper
+goRight (Node rTes l r, otc) = (r, RightCrumb rTes l : otc)
+
+goUp :: OpTreeZipper -> OpTreeZipper
+goUp (t, LeftCrumb rTes b : otc ) = (Node rTes t b, otc)
+goUp (t, RightCrumb rTes b : otc ) = (Node rTes b t, otc)
+
+modifyOpTree :: (OpTree -> OpTree) -> OpTreeZipper -> OpTreeZipper
+modifyOpTree _ (Dummy, otc) = (Dummy, otc)
+modifyOpTree f (t, otc) = (f t, otc)
+
+-- post order visiting, changing the tree on the fly
+visitModifyOpTree :: (Monad m) => OpTreeZipper -> (OpTreeZipper -> m OpTreeZipper) -> m OpTreeZipper
+visitModifyOpTree otz@(Node rTes l r, otc) f = do
+    res  <- visitModifyOpTree (goRight otz) f
+    res' <- visitModifyOpTree (goLeft (goUp res)) f
+    f $ goUp res'
+
+visitModifyOpTree otz@(Leaf rTes, _) f = f otz
+visitModifyOpTree otz@(Dummy, _) _ = return otz
 
 type Edge = (JoinType, TExpr)
 
@@ -343,12 +375,13 @@ collectEdges' op@(Node relTes l r) (em, he) term =
         (constraint' , rules' ) = execState (visitOpTree l (extractRulesL Set.empty op)) (constraint , [])
         (constraint'', rules'') = execState (visitOpTree r (extractRulesR Set.empty op)) (constraint', rules')
 
-collectEdges :: OpTree -> State ReorderState OpTree
-collectEdges op@(Node relTes l r) = do
+collectEdges :: OpTreeZipper -> State ReorderState OpTreeZipper
+collectEdges (op@(Node relTes l r), otc) = do
     modify f
-    return $ insertOpTes newTes op
+    return (op', otc)
     where
         newTes = Set.union (getOpTes l) (getOpTes r)
+        op' = insertOpTes newTes op
         jType = getJoinType relTes
         jPred = getJoinPred relTes
         l_reject = False  -- todo: get actual value
@@ -360,13 +393,13 @@ collectEdges op@(Node relTes l r) = do
         derivedTerms = terms -- todo: implement comparison derivation (eq map, e.g., a = b, b = c then a = c)
         f s = let edgeMap = getEdgeMap s
                   hyperEdges = getHyperEdges s
-                  (newEdgeMap, newHyperEdges) = foldl (collectEdges' op) (edgeMap, hyperEdges) terms in
+                  (newEdgeMap, newHyperEdges) = foldl (collectEdges' op') (edgeMap, hyperEdges) terms in
             ReorderState (getRelIdMap s) newEdgeMap newHyperEdges (getNodeMap s)
 
-collectEdges op@(Leaf relTes) = do
+collectEdges (op@(Leaf relTes), otc) = do
     oldState <- get
     modify f         -- node map size increased
-    return $ insertOpTes (Set.fromList [Map.size $ getNodeMap oldState]) op
+    return (insertOpTes (Set.fromList [Map.size $ getNodeMap oldState]) op, otc)
     where
         f s = let nodeMap = getNodeMap s
                   nodeId = Map.size nodeMap
@@ -447,9 +480,10 @@ reorder' :: OpTree -> OpTree
 reorder' t =
     case nodes of
         [x] -> makeOpTreeFromRel x
-        _ -> error "reorder process produces multiple results"
+        []  -> error "reorder process produces no result"
+        l   -> error ("reorder process produces multiple results: " ++ (show $ length l))
     where
-        (t', rs) = runState (visitOpTree t collectEdges) (ReorderState Map.empty Map.empty [] Map.empty)
+        (_, rs) = runState (visitModifyOpTree (t, []) collectEdges) (ReorderState Map.empty Map.empty [] Map.empty)
         (finalRs, _) = greedyDp (rs, ((LNullPtr, -1), (ENullPtr, StUnknown), ((-1, -1), (InnerJoin, (ENullPtr, StUnknown)))))
         nodes = Map.elems $ getNodeMap finalRs
 
