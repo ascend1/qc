@@ -354,22 +354,30 @@ data ReorderState = ReorderState {
     getNodeMap :: Map.Map Int RLogicalOp
 } deriving (Eq, Show)
 
-collectEdges' :: OpTree -> (EdgeMap, [HyperEdge]) -> TExpr -> (EdgeMap, [HyperEdge])
-collectEdges' op@(Node relTes l r) (em, he) term =
+collectEdges' :: OpTree -> Map.Map Int Int -> (EdgeMap, [HyperEdge]) -> TExpr -> (EdgeMap, [HyperEdge])
+collectEdges' op@(Node relTes l r) relIdMap (em, he) term =
     if Set.size constraint'' > 2 || not (checkRules constraint'' rules'') then
         (em, he ++ [HyperEdge constraint'' (getOpTes l) rules'' (jType, term)])
     else
         let lhs = Set.findMin $ Set.intersection constraint'' (getOpTes l)
-            rhs = Set.findMin $ Set.intersection constraint'' (getOpTes r) in
-        (Map.adjust (`mergeEdge` (jType, term)) (makeEdgeKey jType lhs rhs) em, he)
+            rhs = Set.findMin $ Set.intersection constraint'' (getOpTes r)
+            newEdgeKey = makeEdgeKey jType lhs rhs
+            newEdge = (jType, term) in
+        if Map.member newEdgeKey em then
+            (Map.adjust (`mergeEdge` newEdge) newEdgeKey em, he)
+        else (Map.insert newEdgeKey newEdge em, he)
     where
         jType = getJoinType relTes
-        term_rids = foldr Set.insert Set.empty (extractRidsExpr term)
-        f rids_l rids_r =
-            if Set.intersection rids_l rids_r == Set.empty
-                then Set.union rids_l rids_r
-            else rids_l
-        constraint = f (f term_rids (getOpTes l)) (getOpTes r)
+        term_nids = foldr g Set.empty (extractRidsExpr term)
+        g rid s =
+            case Map.lookup rid relIdMap of
+                Just nid -> Set.insert nid s
+                Nothing  -> error ("rel id " ++ show rid ++ " is not tracked correctly")
+        constraint = f (f term_nids (getOpTes l)) (getOpTes r)
+        f nids_l nids_r =
+            if Set.intersection nids_l nids_r == Set.empty
+                then Set.union nids_l nids_r
+            else nids_l
         -- todo: Currently CD-B because of using Set.empty as refs. Pass NodeMap in
         -- and implement extract_refs to get CD-C.
         (constraint' , rules' ) = execState (visitOpTree l (extractRulesL Set.empty op)) (constraint , [])
@@ -391,9 +399,10 @@ collectEdges (op@(Node relTes l r), otc) = do
                             | otherwise -> [jPred]
             _ -> [jPred]
         derivedTerms = terms -- todo: implement comparison derivation (eq map, e.g., a = b, b = c then a = c)
-        f s = let edgeMap = getEdgeMap s
+        f s = let relIdMap = getRelIdMap s
+                  edgeMap = getEdgeMap s
                   hyperEdges = getHyperEdges s
-                  (newEdgeMap, newHyperEdges) = foldl (collectEdges' op') (edgeMap, hyperEdges) terms in
+                  (newEdgeMap, newHyperEdges) = foldl (collectEdges' op' relIdMap) (edgeMap, hyperEdges) terms in
             ReorderState (getRelIdMap s) newEdgeMap newHyperEdges (getNodeMap s)
 
 collectEdges (op@(Leaf relTes), otc) = do
@@ -424,7 +433,7 @@ moveNode from to newPlan rs =
         nodes = getNodeMap rs
         edges' = Map.foldlWithKey updateEdges edges edges
         (newHyperEdges, newEdges) = foldl updateHyperEdges ([], edges') hyperEdges
-        newNodes = Map.adjust (\_ -> newPlan) from (Map.delete to nodes)
+        newNodes = Map.adjust (const newPlan) from (Map.delete to nodes)
         updateEdges result k@(lhs, rhs) e@(jType, jPred) =
             let newLhs = if lhs == from then to else lhs
                 newRhs = if rhs == from then to else rhs
@@ -481,7 +490,7 @@ reorder' t =
     case nodes of
         [x] -> makeOpTreeFromRel x
         []  -> error "reorder process produces no result"
-        l   -> error ("reorder process produces multiple results: " ++ (show $ length l))
+        l   -> error ("reorder process produces multiple results: " ++ show (length l))
     where
         (_, rs) = runState (visitModifyOpTree (t, []) collectEdges) (ReorderState Map.empty Map.empty [] Map.empty)
         (finalRs, _) = greedyDp (rs, ((LNullPtr, -1), (ENullPtr, StUnknown), ((-1, -1), (InnerJoin, (ENullPtr, StUnknown)))))
