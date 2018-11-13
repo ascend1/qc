@@ -6,8 +6,12 @@ module SqlType
 data SqlType = StBoolean
              | StInteger
              | StDouble
+             | StDecimal Int Int
              | StChar Int
              | StVarchar Int
+             | StDate
+             | StTime
+             | StTimestamp
              | StUnknown
              deriving (Eq, Show)
 

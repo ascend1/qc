@@ -30,6 +30,7 @@ type SymbolTable = M.Map String SemanticInfo
 type TValueExpr = (TValueExpr', [SemanticInfo])
 data TValueExpr' = TExactNumericLiteral Integer
                  | TStringLiteral String
+                 | TBooleanLiteral Bool
                  | TIdentifierChain String String    -- a.b
                  | TIdentifier String
                  | TAsterisk                         -- *
@@ -219,6 +220,14 @@ analyzeTableExpr (TablePrimary t, sTable) =
                 ((TTablePrimary t, map (\(s, mc) -> makeSymbol s mc (Just tblSymbol)) cols)
                 , foldl (\t (s, mc) -> M.insert s (makeSymbol s mc (Just tblSymbol)) t) sTable cols)
             Nothing -> error ("table not found: " ++ t)
+
+analyzeTableExpr (TEJoin jType tl tr jPred, sTable) =
+    let (ttl@(_, lInfo), sTable')  = analyzeTableExpr (tl, sTable)
+        (ttr@(_, rInfo), sTable'') = analyzeTableExpr (tr, sTable')
+        jPred' = case jPred of
+                     Just p  -> Just $ analyzeValueExpr p [sTable'']
+                     Nothing -> Nothing
+    in ((TTEJoin jType ttl ttr jPred', lInfo ++ rInfo), sTable'')  -- todo: process alias correctly
 
 analyzeTableExpr (DerivedTable qe s, sTable) = undefined
 

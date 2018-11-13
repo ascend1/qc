@@ -66,6 +66,9 @@ genValueExpr (TExactNumericLiteral a, _) =
 genValueExpr (TStringLiteral s, _) =
     return (ConstString s, StChar $ length s)
 
+genValueExpr (TBooleanLiteral b, _) =
+    return (ConstBool b, StBoolean)
+
 genValueExpr arg@(TIdentifier a, [s]) = genIdentifier arg
 genValueExpr arg@(TIdentifierChain a b, [s]) = genIdentifier arg
 
@@ -111,6 +114,12 @@ genTableExpr (TTablePrimary t, s) = do
                 nextRelId = currRelId s + 1
                 tblMap = tblMapping s
                 newFmp = foldl (\fmp c -> M.insert (colTblId c, colId c) (nextRelId, colId c) fmp) (fieldMapping s) columns
+
+genTableExpr (TTEJoin jType lt rt jPred, s) = do
+    l <- genTableExpr lt
+    r <- genTableExpr rt
+    jPred' <- genValueExpr (fromMaybe (TBooleanLiteral True, []) jPred)
+    return (LJoin jType jPred' l r, -1)
 
 genFrom :: [TTableExpr] -> PGen RLogicalOp
 genFrom [] = error "empty table reference list"  -- parser inserts dummy when no table is refed
