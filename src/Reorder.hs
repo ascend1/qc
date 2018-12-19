@@ -433,7 +433,7 @@ moveNode from to newPlan rs =
         nodes = getNodeMap rs
         edges' = Map.foldlWithKey updateEdges edges edges
         (newHyperEdges, newEdges) = foldl updateHyperEdges ([], edges') hyperEdges
-        newNodes = Map.adjust (const newPlan) from (Map.delete to nodes)
+        newNodes = Map.adjust (const newPlan) to (Map.delete from nodes)
         updateEdges result k@(lhs, rhs) e@(jType, jPred) =
             let newLhs = if lhs == from then to else lhs
                 newRhs = if rhs == from then to else rhs
